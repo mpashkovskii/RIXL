@@ -95,11 +95,14 @@ getAvailableNetworkDevices() {
             NIXL_TRACE << "provider=" << device_list.first << ", device=" << device;
         }
     }
-
     if (provider_device_map.find("cxi") != provider_device_map.end()) {
         return {"cxi", provider_device_map["cxi"]};
     } else if (provider_device_map.find("efa") != provider_device_map.end()) {
         return {"efa", provider_device_map["efa"]};
+    } else if (provider_device_map.find("verbs;ofi_rxm") != provider_device_map.end()) {
+        return {"verbs;ofi_rxm", provider_device_map["verbs;ofi_rxm"]};
+    } else if (provider_device_map.find("verbs") != provider_device_map.end()) {
+        return {"verbs", provider_device_map["verbs"]};
     } else if (provider_device_map.find("sockets") != provider_device_map.end()) {
         return {"sockets", {provider_device_map["sockets"][0]}};
     }

@@ -100,16 +100,25 @@ nixlLibfabricTopology::discoverTopology() {
             }
         }
     } else {
-        // For TCP/sockets devices, bypass complex topology discovery
+        // For non-EFA devices, use simplified topology discovery
         NIXL_INFO << "Using simplified topology for " << provider_name
-                  << " devices (no topology mapping needed)";
+                  << " devices (no device-to-fabric mapping needed)";
 
-        // Set basic values without hwloc discovery
-        num_aws_accel = 0; // TCP doesn't need accelerator topology
+        // Still discover GPUs even in simplified mode for GPU memory registration
+        status = initHwlocTopology();
+        if (status == NIXL_SUCCESS) {
+            status = discoverAccelWithHwloc();
+            if (status != NIXL_SUCCESS) {
+                NIXL_WARN << "GPU discovery failed in simplified topology mode";
+                // Not a fatal error - continue without GPUs
+            }
+            cleanupHwlocTopology();
+        } else {
+            NIXL_WARN << "hwloc initialization failed - no GPU detection available";
+        }
+
         num_numa_nodes = 1; // Simple fallback
-
-        // For TCP/sockets devices, no accelerator-mapping required.
-        NIXL_INFO << "TCP devices available globally - no accelerator-specific mapping required";
+        NIXL_INFO << "Network devices available globally - no GPU-to-network mapping";
     }
     topology_discovered = true;
     NIXL_TRACE << "Topology discovery completed successfully";
