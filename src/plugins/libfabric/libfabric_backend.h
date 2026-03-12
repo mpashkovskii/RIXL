@@ -264,8 +264,8 @@ private:
     // Common connection creation helper
     nixl_status_t
     createAgentConnection(const std::string &agent_name,
-                          const std::vector<std::array<char, 56>> &data_rail_endpoints,
-                          const std::vector<std::array<char, 56>> &control_rail_endpoints);
+                          const std::vector<std::array<char, LF_EP_NAME_MAX_LEN>> &data_rail_endpoints,
+                          const std::vector<std::array<char, LF_EP_NAME_MAX_LEN>> &control_rail_endpoints);
 
     // Private notification implementation with unified binary notification system
     nixl_status_t

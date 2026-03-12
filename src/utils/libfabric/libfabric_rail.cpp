@@ -496,6 +496,7 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
         }
         // Create AV for this rail
         struct fi_av_attr av_attr = {};
+        av_attr.type = FI_AV_MAP;  // Use MAP type for variable-length addresses
         ret = fi_av_open(domain, &av_attr, &av, NULL);
         if (ret) {
             NIXL_ERROR << "fi_av_open failed for rail " << rail_id << ": " << fi_strerror(-ret);

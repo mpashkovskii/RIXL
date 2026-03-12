@@ -42,7 +42,7 @@
 // Long timeouts block in poll(), preventing message processing. EFA uses hardware completions.
 #define NIXL_LIBFABRIC_CQ_SREAD_TIMEOUT_MS 10
 #define NIXL_LIBFABRIC_DEFAULT_STRIPING_THRESHOLD (128 * 1024) // 128KB
-#define LF_EP_NAME_MAX_LEN 56
+#define LF_EP_NAME_MAX_LEN 128  // Increased for verbs;ofi_rxm and IPv6
 
 // Request pool configuration constants
 #define NIXL_LIBFABRIC_CONTROL_REQUESTS_PER_RAIL 4096 // SEND/RECV operations (1:1 with buffers)
