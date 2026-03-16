@@ -111,7 +111,6 @@ nixlLibfabricTopology::discoverTopology() {
         // Set basic values without hwloc discovery
         num_nvidia_accel = 0; // TCP doesn't need accelerator topology
         num_aws_accel = 0; // TCP doesn't need accelerator topology
-        num_numa_nodes = 1; // Simple fallback
 
         // For TCP/sockets devices, no accelerator-mapping required.
         NIXL_INFO << "TCP devices available globally - no accelerator-specific mapping required";
