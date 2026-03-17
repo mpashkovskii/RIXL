@@ -48,11 +48,11 @@ Note: You can use more fine-grained try/except blocks.
 Run:
 Start target:
 ```bash
-python3 examples/python/expanded_two_peers.py --mode target --ip 127.0.0.1 --port 5555 --backend UCX
+python3 examples/python/expanded_two_peers.py --mode target --ip 10.254.6.6 --port 5555 --backend LIBFABRIC --use_cuda true
 ```
 Then start initiator:
 ```bash
-python3 examples/python/expanded_two_peers.py --mode initiator --ip 127.0.0.1 --port 5555 --backend UCX
+python3 examples/python/expanded_two_peers.py --mode initiator --ip 10.254.6.47 --port 5555 --backend LIBFABRIC --use_cuda true
 ```
 Options:
 - `--backend` selects the backend (default: UCX). Note that the example is targetting network backends not storage.
