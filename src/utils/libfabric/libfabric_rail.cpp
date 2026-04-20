@@ -424,7 +424,7 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
         hints->caps |= FI_RMA_EVENT;
         hints->domain_attr->mr_mode = FI_MR_LOCAL | FI_MR_HMEM | FI_MR_VIRT_ADDR | FI_MR_ALLOCATED |
             FI_MR_PROV_KEY | FI_MR_ENDPOINT;
-    } else if (provider == "verbs") {
+    } else if (provider == "verbs;ofi_rxd") {
         // Verbs (InfiniBand) provider supports advanced memory registration
         hints->domain_attr->mr_mode =
             FI_MR_LOCAL | FI_MR_HMEM | FI_MR_VIRT_ADDR | FI_MR_ALLOCATED | FI_MR_PROV_KEY;

@@ -81,7 +81,7 @@ nixlLibfabricTopology::discoverTopology() {
         return status;
     }
     // For EFA and verbs devices, build PCIe to Libfabric device mapping and full topology
-    if (provider_name == "efa" || provider_name == "verbs") {
+    if (provider_name == "efa" || provider_name == "verbs;ofi_rxd") {
         // Build PCIe to Libfabric device mapping
         status = buildPcieToLibfabricMapping();
         if (status != NIXL_SUCCESS) {
@@ -133,8 +133,8 @@ nixlLibfabricTopology::discoverProviderWithDevices() {
     // Set device type based on discovered provider
     if (provider_name == "efa") {
         NIXL_INFO << "Discovered " << num_devices << " EFA devices";
-    } else if (provider_name == "verbs") {
-        NIXL_INFO << "Discovered " << num_devices << " InfiniBand (verbs) devices";
+    } else if (provider_name == "verbs;ofi_rxd") {
+        NIXL_INFO << "Discovered " << num_devices << " InfiniBand (verbs;ofi_rxd) devices";
     } else if (provider_name == "tcp" || provider_name == "sockets") {
         NIXL_INFO << "Discovered " << num_devices << " " << provider_name
                   << " devices (TCP fallback)";
@@ -464,7 +464,7 @@ nixlLibfabricTopology::discoverEfaDevicesWithHwloc() {
     int hwloc_nic_count = 0;
     hwloc_obj_t pci_obj = nullptr;
     while ((pci_obj = hwloc_get_next_pcidev(hwloc_topology, pci_obj)) != nullptr) {
-        bool is_target_device = (provider_name == "verbs") ? isInfiniBandDevice(pci_obj)
+        bool is_target_device = (provider_name == "verbs;ofi_rxd") ? isInfiniBandDevice(pci_obj)
                                                            : isEfaDevice(pci_obj);
         if (is_target_device) {
             hwloc_nic_count++;
