@@ -184,7 +184,7 @@ private:
 
     // builds rail data ready for applying selection logic
     bool
-    buildNumaDataRails(const nixlLibfabricTopology *topology);
+    buildNumaDataRails(nixlLibfabricRailManager &rail_manager);
 
     // builds the NUMA distance map - used in case user specifies bandwidth limitation that exceeds
     // a single NUMA node capacity
@@ -225,6 +225,46 @@ nixlLibfabricRailManager::nixlLibfabricRailManager(size_t striping_threshold)
 
     NIXL_DEBUG << "Got " << all_devices.size()
                << " network devices from topology for provider=" << selected_provider_name;
+
+    // Apply device filter if NIXL_LIBFABRIC_DEVICE_FILTER is set.
+    // The env var is a comma-separated list of device name prefixes (e.g. "mlx5_1,mlx5_0").
+    // Only devices whose name starts with one of the prefixes will be kept.
+    const char *device_filter_env = getenv("NIXL_LIBFABRIC_DEVICE_FILTER");
+    if (device_filter_env != nullptr && device_filter_env[0] != '\0') {
+        std::vector<std::string> prefixes;
+        std::istringstream ss(device_filter_env);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            // trim whitespace
+            token.erase(0, token.find_first_not_of(" \t"));
+            token.erase(token.find_last_not_of(" \t") + 1);
+            if (!token.empty()) {
+                prefixes.push_back(token);
+            }
+        }
+
+        std::vector<std::string> filtered_devices;
+        for (const auto &dev : all_devices) {
+            for (const auto &prefix : prefixes) {
+                if (dev.compare(0, prefix.size(), prefix) == 0) {
+                    filtered_devices.push_back(dev);
+                    break;
+                }
+            }
+        }
+
+        NIXL_INFO << "NIXL_LIBFABRIC_DEVICE_FILTER=\"" << device_filter_env << "\": filtered "
+                  << all_devices.size() << " devices down to " << filtered_devices.size();
+        for (const auto &dev : filtered_devices) {
+            NIXL_DEBUG << "  Keeping device: " << dev;
+        }
+
+        if (filtered_devices.empty()) {
+            NIXL_WARN << "NIXL_LIBFABRIC_DEVICE_FILTER matched no devices, using all devices";
+        } else {
+            all_devices = std::move(filtered_devices);
+        }
+    }
 
     // Create rails with selected provider - throw on failure
     nixl_status_t rail_status = createRails(all_devices, selected_provider_name);
@@ -657,8 +697,7 @@ nixlLibfabricRailManager::selectRailsForMemory(void *mem_addr,
             NIXL_WARN << "Failed to select rails for DRAM_SEG according to policy, defaulting to "
                          "all rails";
             // default to all rails
-            nixlLibfabricAllRailSelectionPolicy::selectAllRails(selected_rails,
-                                                                topology->getAllDevices().size());
+            nixlLibfabricAllRailSelectionPolicy::selectAllRails(selected_rails, rails_.size());
         } else {
             NIXL_TRACE << "Selected rails " << LibfabricUtils::railIdsToString(selected_rails)
                        << " for registration of memory buffer at " << std::hex << mem_addr;
@@ -1245,7 +1284,7 @@ bool
 nixlLibfabricNumaRailSelectionPolicy::load(nixlLibfabricRailManager &rail_manager) {
     // avoid topology checks during runtime, and use instead prepared array of data rail indices for
     // this NUMA node
-    if (!buildNumaDataRails(rail_manager.getTopology())) {
+    if (!buildNumaDataRails(rail_manager)) {
         return false;
     }
     buildNumaDistanceMap();
@@ -1454,7 +1493,8 @@ nixlLibfabricNumaRailSelectionPolicy::selectExtraSwitchRail(SwitchRailData &swit
 }
 
 bool
-nixlLibfabricNumaRailSelectionPolicy::buildNumaDataRails(const nixlLibfabricTopology *topology) {
+nixlLibfabricNumaRailSelectionPolicy::buildNumaDataRails(nixlLibfabricRailManager &rail_manager) {
+    const nixlLibfabricTopology *topology = rail_manager.getTopology();
     int numa_node_count = -1;
     if (!LibfabricUtils::getNumConfiguredNumaNodes(numa_node_count)) {
         NIXL_ERROR << "Failed to build rail data for NUMA-aware rail selection policy, cannot get "
@@ -1481,10 +1521,10 @@ nixlLibfabricNumaRailSelectionPolicy::buildNumaDataRails(const nixlLibfabricTopo
     std::vector<SwitchMap> numa_switch_map(numa_node_count);
 
     uint16_t max_numa_node_id = 0;
-    const std::vector<std::string> &all_devices = topology->getAllDevices();
-    for (size_t i = 0; i < all_devices.size(); ++i) {
-        // get the NUMA node id of the device
-        const std::string &device = all_devices[i];
+    // Iterate over actual rails (not topology devices) so that rail IDs match
+    // the rails_ array after any device filtering has been applied.
+    for (size_t i = 0; i < rail_manager.getNumRails(); ++i) {
+        const std::string &device = rail_manager.getRail(i).device_name;
         uint16_t dev_numa_node_id = topology->getDeviceNumaNode(device);
         if (dev_numa_node_id == nixlLibfabricTopology::INVALID_NUMA_NODE_ID) {
             NIXL_WARN << "Failed to get NUMA node id for device " << device << ", skipping";
@@ -1530,9 +1570,6 @@ nixlLibfabricNumaRailSelectionPolicy::buildNumaDataRails(const nixlLibfabricTopo
         // compute actual max NUMA node id
         max_numa_node_id = std::max(max_numa_node_id, dev_numa_node_id);
     }
-
-    // reduce array to actual size
-    numa_switch_map.resize(max_numa_node_id + 1);
 
     // debug print switch/node/rail affinity
     NIXL_TRACE << "PCIe rail/switch affinity per NUMA node:";
@@ -1585,14 +1622,13 @@ nixlLibfabricNumaRailSelectionPolicy::buildNumaDataRails(const nixlLibfabricTopo
         }
     }
 
-    // verify that all NUMA nodes/switches have at least one assigned rail
-    // NOTE: it is possible to have nodes/switches without NICs attached, but in that case we
-    // shouldn't reach here, so this essentially checks for internal error
+    // verify that NUMA nodes with assigned switches have valid rail data
+    // NOTE: with device filtering, some NUMA nodes may have no NICs/rails assigned
     for (size_t i = 0; i < numa_data_rails_.size(); ++i) {
         if (numa_data_rails_[i].switch_data_.size() == 0) {
-            NIXL_ERROR << "Failed to build data rail array for NUMA node " << i
-                       << ", no PCIe switches assigned";
-            return false;
+            // No switches on this NUMA node — acceptable when device filtering is active
+            NIXL_DEBUG << "NUMA node " << i << " has no PCIe switches/rails assigned";
+            continue;
         }
         for (size_t j = 0; j < numa_data_rails_[i].switch_data_.size(); ++j) {
             if (numa_data_rails_[i].switch_data_[j].rail_ids_.size() == 0) {

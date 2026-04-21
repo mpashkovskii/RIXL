@@ -592,11 +592,25 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
                    << " control requests, " << NIXL_LIBFABRIC_DATA_REQUESTS_PER_RAIL
                    << " data requests for rail " << rail_id;
 
-        // Post initial pool of receives using new resource management system
-        NIXL_INFO << "Pre-posting " << NIXL_LIBFABRIC_RECV_POOL_SIZE << " recv requests for rail "
+        // Post initial pool of receives using new resource management system.
+        // Some providers (e.g. verbs;ofi_rxd) advertise an rx queue depth in
+        // rx_attr->size but internally consume slots for protocol overhead,
+        // causing fi_recvmsg to return EAGAIN before the advertised limit.
+        // We handle this gracefully: stop posting when the provider pushes back,
+        // as long as we posted at least one receive.
+        size_t recv_pool_target = NIXL_LIBFABRIC_RECV_POOL_SIZE;
+        if (info && info->rx_attr && info->rx_attr->size > 0 &&
+            info->rx_attr->size < recv_pool_target) {
+            NIXL_INFO << "Capping recv pool from " << recv_pool_target << " to provider rx_attr.size "
+                      << info->rx_attr->size << " for rail " << rail_id;
+            recv_pool_target = info->rx_attr->size;
+        }
+
+        NIXL_INFO << "Pre-posting up to " << recv_pool_target << " recv requests for rail "
                   << rail_id;
 
-        for (size_t i = 0; i < NIXL_LIBFABRIC_RECV_POOL_SIZE; ++i) {
+        size_t recv_posted = 0;
+        for (size_t i = 0; i < recv_pool_target; ++i) {
             nixlLibfabricReq *recv_req = allocateControlRequest(
                 NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE, LibfabricUtils::getNextXferId());
             if (!recv_req) {
@@ -606,14 +620,20 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
             }
             status = postRecv(recv_req);
             if (status != NIXL_SUCCESS) {
-                NIXL_ERROR << "Failed to post recv " << i << " on rail " << rail_id;
                 releaseRequest(recv_req);
-                throw std::runtime_error("Failed to post recv pool on rail " +
-                                         std::to_string(rail_id));
+                NIXL_INFO << "Provider recv queue full after " << recv_posted
+                          << " posts on rail " << rail_id << " (target was " << recv_pool_target << ")";
+                break;
             }
+            recv_posted++;
         }
 
-        NIXL_INFO << "Successfully pre-posted " << NIXL_LIBFABRIC_RECV_POOL_SIZE
+        if (recv_posted == 0) {
+            throw std::runtime_error("Failed to post any recv on rail " +
+                                     std::to_string(rail_id));
+        }
+
+        NIXL_INFO << "Successfully pre-posted " << recv_posted
                   << " recv requests for rail " << rail_id;
         NIXL_TRACE << "Successfully initialized rail " << rail_id;
     }
@@ -1003,7 +1023,7 @@ nixlLibfabricRail::postRecv(nixlLibfabricReq *req) const {
 
     int ret = fi_recvmsg(endpoint, &msg, 0);
     if (ret) {
-        NIXL_ERROR << "fi_recvmsg failed on rail " << rail_id << ": " << fi_strerror(-ret);
+        NIXL_WARN << "fi_recvmsg failed on rail " << rail_id << ": " << fi_strerror(-ret);
         return NIXL_ERR_BACKEND;
     }
 
