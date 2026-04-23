@@ -684,9 +684,10 @@ nixlLibfabricRailManager::selectRailsForMemory(void *mem_addr,
         }
 
         if (device_rails.empty()) {
-            NIXL_ERROR << "No valid rail mapping found for device PCI " << device_pci_bus_id
-                       << " (checked " << device_efa_devices.size() << " EFA devices)";
-            return {};
+            NIXL_WARN << "No topology-mapped rails found for device PCI " << device_pci_bus_id
+                      << " (checked " << device_efa_devices.size()
+                      << " EFA devices) - falling back to all available rails";
+            nixlLibfabricAllRailSelectionPolicy::selectAllRails(device_rails, rails_.size());
         }
 
         NIXL_DEBUG << "VRAM memory " << mem_addr << " on device PCI " << device_pci_bus_id

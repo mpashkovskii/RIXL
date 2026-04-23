@@ -81,7 +81,8 @@ nixlLibfabricTopology::discoverTopology() {
         return status;
     }
     // For EFA and verbs devices, build PCIe to Libfabric device mapping and full topology
-    if (provider_name == "efa" || provider_name == "verbs;ofi_rxd") {
+    if (provider_name == "efa" || provider_name == "verbs;ofi_rxm" ||
+        provider_name == "verbs;ofi_rxd") {
         // Build PCIe to Libfabric device mapping
         status = buildPcieToLibfabricMapping();
         if (status != NIXL_SUCCESS) {
@@ -139,8 +140,8 @@ nixlLibfabricTopology::discoverProviderWithDevices() {
     // Set device type based on discovered provider
     if (provider_name == "efa") {
         NIXL_INFO << "Discovered " << num_devices << " EFA devices";
-    } else if (provider_name == "verbs;ofi_rxd") {
-        NIXL_INFO << "Discovered " << num_devices << " InfiniBand (verbs;ofi_rxd) devices";
+    } else if (provider_name == "verbs;ofi_rxm" || provider_name == "verbs;ofi_rxd") {
+        NIXL_INFO << "Discovered " << num_devices << " InfiniBand (" << provider_name << ") devices";
     } else if (provider_name == "tcp" || provider_name == "sockets") {
         NIXL_INFO << "Discovered " << num_devices << " " << provider_name
                   << " devices (TCP fallback)";
@@ -464,8 +465,8 @@ nixlLibfabricTopology::discoverAccelWithHwloc() {
 }
 
 // The naming of the method and some variables not aligned anymore with
-// the change to support verbs;ofi_rxd, but the logic is still valid
-// for both EFA and verbs devices since both are PCIe devices discovered via hwloc.
+// the change to support verbs;ofi_rxd and verbs;ofi_rxm, but the logic is still
+// valid for both EFA and verbs devices since both are PCIe devices discovered via hwloc.
 // We can refactor the naming in a future cleanup if needed.
 nixl_status_t
 nixlLibfabricTopology::discoverEfaDevicesWithHwloc() {
@@ -474,8 +475,9 @@ nixlLibfabricTopology::discoverEfaDevicesWithHwloc() {
     int hwloc_nic_count = 0;
     hwloc_obj_t pci_obj = nullptr;
     while ((pci_obj = hwloc_get_next_pcidev(hwloc_topology, pci_obj)) != nullptr) {
-        bool is_target_device = (provider_name == "verbs;ofi_rxd") ? isInfiniBandDevice(pci_obj)
-                                                                 : isEfaDevice(pci_obj);
+        bool is_target_device = (provider_name == "verbs;ofi_rxm" ||
+                                 provider_name == "verbs;ofi_rxd") ? isInfiniBandDevice(pci_obj)
+                                                                    : isEfaDevice(pci_obj);
         if (is_target_device) {
             hwloc_nic_count++;
             NIXL_TRACE << "Found " << provider_name
