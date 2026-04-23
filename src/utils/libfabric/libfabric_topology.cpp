@@ -104,16 +104,22 @@ nixlLibfabricTopology::discoverTopology() {
             }
         }
     } else {
-        // For TCP/sockets devices, bypass complex topology discovery
+        // For TCP/sockets devices, bypass complex topology discovery but still
+        // detect accelerators so that VRAM_SEG memory type is available.
         NIXL_INFO << "Using simplified topology for " << provider_name
                   << " devices (no topology mapping needed)";
 
-        // Set basic values without hwloc discovery
-        num_nvidia_accel = 0; // TCP doesn't need accelerator topology
-        num_aws_accel = 0; // TCP doesn't need accelerator topology
-        num_numa_nodes = 1; // Simple fallback
+        // Discover accelerators via hwloc even for TCP, so runtime_ is set correctly
+        status = discoverHwlocTopology();
+        if (status != NIXL_SUCCESS) {
+            NIXL_WARN << "hwloc topology discovery failed for TCP, assuming no accelerators";
+            num_nvidia_accel = 0;
+            num_amd_accel = 0;
+            num_aws_accel = 0;
+        }
+        num_numa_nodes = std::max(num_numa_nodes, 1); // At least 1
 
-        // For TCP/sockets devices, no accelerator-mapping required.
+        // For TCP/sockets devices, no accelerator-to-NIC mapping required.
         NIXL_INFO << "TCP devices available globally - no accelerator-specific mapping required";
     }
     topology_discovered = true;

@@ -22,6 +22,7 @@
 #include <iomanip>
 #include <sstream>
 #include <atomic>
+#include <algorithm>
 #include <cstring>
 
 #include <rdma/fabric.h>
@@ -82,10 +83,10 @@ getAvailableNetworkDevices() {
                        << ", ep_type=" << cur->ep_attr->type << ", caps=" << std::hex << cur->caps
                        << std::dec;
 
-            if (provider_device_map.find(provider_name) == provider_device_map.end()) {
-                provider_device_map[provider_name] = {};
+            auto &dev_list = provider_device_map[provider_name];
+            if (std::find(dev_list.begin(), dev_list.end(), device_name) == dev_list.end()) {
+                dev_list.push_back(device_name);
             }
-            provider_device_map[provider_name].push_back(device_name);
         }
     }
 
@@ -105,7 +106,7 @@ getAvailableNetworkDevices() {
     } else if (provider_device_map.find("verbs;ofi_rxd") != provider_device_map.end()) {
         return {"verbs;ofi_rxd", provider_device_map["verbs;ofi_rxd"]};
     } else if (provider_device_map.find("tcp") != provider_device_map.end()) {
-        return {"tcp", {provider_device_map["tcp"][0]}};
+        return {"tcp", provider_device_map["tcp"]};
     } else if (provider_device_map.find("sockets") != provider_device_map.end()) {
         return {"sockets", {provider_device_map["sockets"][0]}};
     }
