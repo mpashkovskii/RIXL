@@ -105,8 +105,6 @@ getAvailableNetworkDevices() {
         return {"efa", provider_device_map["efa"]};
     } else if (provider_device_map.find("verbs;ofi_rxm") != provider_device_map.end()) {
         return {"verbs;ofi_rxm", provider_device_map["verbs;ofi_rxm"]};
-    } else if (provider_device_map.find("verbs;ofi_rxd") != provider_device_map.end()) {
-        return {"verbs;ofi_rxd", provider_device_map["verbs;ofi_rxd"]};
     } else if (provider_device_map.find("tcp") != provider_device_map.end()) {
         return {"tcp", provider_device_map["tcp"]};
     } else if (provider_device_map.find("sockets") != provider_device_map.end()) {

@@ -81,8 +81,7 @@ nixlLibfabricTopology::discoverTopology() {
         return status;
     }
     // For EFA and verbs devices, build PCIe to Libfabric device mapping and full topology
-    if (provider_name == "efa" || provider_name == "verbs;ofi_rxm" ||
-        provider_name == "verbs;ofi_rxd") {
+    if (provider_name == "efa" || provider_name == "verbs;ofi_rxm") {
         // Build PCIe to Libfabric device mapping
         status = buildPcieToLibfabricMapping();
         if (status != NIXL_SUCCESS) {
@@ -105,22 +104,17 @@ nixlLibfabricTopology::discoverTopology() {
             }
         }
     } else {
-        // For TCP/sockets devices, bypass complex topology discovery but still
-        // detect accelerators so that VRAM_SEG memory type is available.
+        // For TCP/sockets devices, bypass complex topology discovery
         NIXL_INFO << "Using simplified topology for " << provider_name
                   << " devices (no topology mapping needed)";
 
-        // Discover accelerators via hwloc even for TCP, so runtime_ is set correctly
-        status = discoverHwlocTopology();
-        if (status != NIXL_SUCCESS) {
-            NIXL_WARN << "hwloc topology discovery failed for TCP, assuming no accelerators";
-            num_nvidia_accel = 0;
-            num_amd_accel = 0;
-            num_aws_accel = 0;
-        }
-        num_numa_nodes = std::max(num_numa_nodes, 1); // At least 1
+        // Set basic values without hwloc discovery
+        num_nvidia_accel = 0; // TCP doesn't need accelerator topology
+        num_amd_accel = 0; // TCP doesn't need accelerator topology
+        num_aws_accel = 0; // TCP doesn't need accelerator topology
+        num_numa_nodes = 1; // Simple fallback
 
-        // For TCP/sockets devices, no accelerator-to-NIC mapping required.
+        // For TCP/sockets devices, no accelerator-mapping required.
         NIXL_INFO << "TCP devices available globally - no accelerator-specific mapping required";
     }
     topology_discovered = true;
@@ -140,7 +134,7 @@ nixlLibfabricTopology::discoverProviderWithDevices() {
     // Set device type based on discovered provider
     if (provider_name == "efa") {
         NIXL_INFO << "Discovered " << num_devices << " EFA devices";
-    } else if (provider_name == "verbs;ofi_rxm" || provider_name == "verbs;ofi_rxd") {
+    } else if (provider_name == "verbs;ofi_rxm") {
         NIXL_INFO << "Discovered " << num_devices << " InfiniBand (" << provider_name << ") devices";
     } else if (provider_name == "tcp" || provider_name == "sockets") {
         NIXL_INFO << "Discovered " << num_devices << " " << provider_name
@@ -465,8 +459,8 @@ nixlLibfabricTopology::discoverAccelWithHwloc() {
 }
 
 // The naming of the method and some variables not aligned anymore with
-// the change to support verbs;ofi_rxd and verbs;ofi_rxm, but the logic is still
-// valid for both EFA and verbs devices since both are PCIe devices discovered via hwloc.
+// the change to support verbs;ofi_rxm, but the logic is still valid for both
+// EFA and verbs devices since both are PCIe devices discovered via hwloc.
 // We can refactor the naming in a future cleanup if needed.
 nixl_status_t
 nixlLibfabricTopology::discoverEfaDevicesWithHwloc() {
@@ -475,8 +469,7 @@ nixlLibfabricTopology::discoverEfaDevicesWithHwloc() {
     int hwloc_nic_count = 0;
     hwloc_obj_t pci_obj = nullptr;
     while ((pci_obj = hwloc_get_next_pcidev(hwloc_topology, pci_obj)) != nullptr) {
-        bool is_target_device = (provider_name == "verbs;ofi_rxm" ||
-                                 provider_name == "verbs;ofi_rxd") ? isInfiniBandDevice(pci_obj)
+        bool is_target_device = (provider_name == "verbs;ofi_rxm") ? isInfiniBandDevice(pci_obj)
                                                                     : isEfaDevice(pci_obj);
         if (is_target_device) {
             hwloc_nic_count++;

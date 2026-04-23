@@ -424,12 +424,6 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
         hints->caps |= FI_RMA_EVENT;
         hints->domain_attr->mr_mode = FI_MR_LOCAL | FI_MR_HMEM | FI_MR_VIRT_ADDR | FI_MR_ALLOCATED |
             FI_MR_PROV_KEY | FI_MR_ENDPOINT;
-    } else if (provider == "verbs;ofi_rxd") {
-        // verbs;ofi_rxd reports mr_mode=[] (basic registration mode).
-        // Requesting FI_MR_HMEM, FI_MR_VIRT_ADDR, or FI_MR_PROV_KEY causes
-        // fi_mr_key() to return FI_KEY_NOTAVAIL on internal buffers because
-        // the provider doesn't actually support those modes.
-        hints->domain_attr->mr_mode = FI_MR_LOCAL | FI_MR_ALLOCATED;
     } else {
         // EFA and other providers support advanced memory registration
         hints->domain_attr->mr_mode =
@@ -595,22 +589,10 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
                    << " data requests for rail " << rail_id;
 
         // Post initial pool of receives using new resource management system
-        // Cap recv pool to provider's actual rx queue size. The ofi_rxd reliability
-        // layer wraps verbs datagrams and the underlying QP rx queue is often smaller
-        // than the advertised rx_attr->size (e.g. mlx5 dgram QP limit ~384).
-        // Exceeding this causes fi_recvmsg to fail with -FI_EAGAIN.
-        size_t recv_pool_size = NIXL_LIBFABRIC_RECV_POOL_SIZE;
-        if (info->rx_attr && info->rx_attr->size > 0 &&
-            info->rx_attr->size < recv_pool_size) {
-            NIXL_INFO << "Capping recv pool from " << recv_pool_size << " to provider rx_attr->size "
-                      << info->rx_attr->size << " for rail " << rail_id;
-            recv_pool_size = info->rx_attr->size;
-        }
-        NIXL_INFO << "Pre-posting " << recv_pool_size << " recv requests for rail "
+        NIXL_INFO << "Pre-posting " << NIXL_LIBFABRIC_RECV_POOL_SIZE << " recv requests for rail "
                   << rail_id;
 
-        size_t posted_count = 0;
-        for (size_t i = 0; i < recv_pool_size; ++i) {
+        for (size_t i = 0; i < NIXL_LIBFABRIC_RECV_POOL_SIZE; ++i) {
             nixlLibfabricReq *recv_req = allocateControlRequest(
                 NIXL_LIBFABRIC_SEND_RECV_BUFFER_SIZE, LibfabricUtils::getNextXferId());
             if (!recv_req) {
@@ -620,25 +602,14 @@ nixlLibfabricRail::nixlLibfabricRail(const std::string &device,
             }
             status = postRecv(recv_req);
             if (status != NIXL_SUCCESS) {
-                // RQ full (e.g. ofi_rxd underlying verbs UD QP limit) — stop posting.
-                // This is expected: ofi_rxd advertises rx_attr->size=1024 but the
-                // actual hardware QP depth is smaller (~384 on mlx5).
-                // See `fi_info -p verbs -v` and `fi_rx_attr.size`
+                NIXL_ERROR << "Failed to post recv " << i << " on rail " << rail_id;
                 releaseRequest(recv_req);
-                NIXL_INFO << "Receive queue full after " << posted_count
-                          << " posts on rail " << rail_id
-                          << " (requested " << recv_pool_size << ")";
-                break;
+                throw std::runtime_error("Failed to post recv pool on rail " +
+                                         std::to_string(rail_id));
             }
-            posted_count++;
         }
 
-        if (posted_count == 0) {
-            throw std::runtime_error("Failed to post any recv on rail " +
-                                     std::to_string(rail_id));
-        }
-
-        NIXL_INFO << "Successfully pre-posted " << posted_count
+        NIXL_INFO << "Successfully pre-posted " << NIXL_LIBFABRIC_RECV_POOL_SIZE
                   << " recv requests for rail " << rail_id;
         NIXL_TRACE << "Successfully initialized rail " << rail_id;
     }

@@ -46,6 +46,7 @@ struct TopologyInfo {
     bool enable;
     const char *instance_type;
     const char *topo_file;
+    const char *provider;
     size_t numa_node_count;
     size_t nic_count;
     size_t nic_line_speed; // Gbps 1000^3
@@ -68,6 +69,7 @@ static TopologyInfo topologies[] = {
     {.enable = true,
      .instance_type = "p3dn.24xl",
      .topo_file = "p3dn.24xl-topo.xml",
+     .provider = "efa",
      .numa_node_count = 0, // no NIC is attached to NUMA node, the only NIC is attached to machine
      .nic_count = 1,
      .nic_line_speed = 100,
@@ -82,6 +84,7 @@ static TopologyInfo topologies[] = {
     {.enable = true,
      .instance_type = "p4d.24xl",
      .topo_file = "p4d.24xl-topo.xml",
+     .provider = "efa",
      .numa_node_count = 2,
      .nic_count = 4,
      .nic_line_speed = 100,
@@ -98,6 +101,7 @@ static TopologyInfo topologies[] = {
     {.enable = true,
      .instance_type = "p5.48xl",
      .topo_file = "p5.48xl-topo.xml",
+     .provider = "efa",
      .numa_node_count = 2,
      .nic_count = 32,
      .nic_line_speed = 100,
@@ -120,6 +124,7 @@ static TopologyInfo topologies[] = {
     {.enable = true,
      .instance_type = "p5en.48xl",
      .topo_file = "p5en.48xl-topo.xml",
+     .provider = "efa",
      .numa_node_count = 2,
      .nic_count = 16,
      .nic_line_speed = 200,
@@ -140,6 +145,7 @@ static TopologyInfo topologies[] = {
     {.enable = true,
      .instance_type = "p6-b200.48xl",
      .topo_file = "p6-b200.48xl-topo.xml",
+     .provider = "efa",
      .numa_node_count = 2,
      .nic_count = 8,
      .nic_line_speed = 400,
@@ -166,6 +172,7 @@ static TopologyInfo topologies[] = {
     {.enable = true,
      .instance_type = "g5.48xl",
      .topo_file = "g5.48xl-topo.xml",
+     .provider = "efa",
      .numa_node_count = 0, // no NIC is attached to NUMA node, the only NIC is attached to machine
      .nic_count = 1,
      .nic_line_speed = 100,
@@ -180,6 +187,7 @@ static TopologyInfo topologies[] = {
     {.enable = true,
      .instance_type = "g6.48xl",
      .topo_file = "g6.48xl-topo.xml",
+     .provider = "efa",
      .numa_node_count = 1, // single NIC is attached to a NUMA node
      .nic_count = 1,
      .nic_line_speed = 100,
@@ -191,7 +199,7 @@ static TopologyInfo topologies[] = {
      .rail_partition = {{{0}}, {{0}}}}, // pretending single switch in each node, both using rail 0
 
     //
-    // AMD MI300X (verbs;ofi_rxd provider - RoCE)
+    // AMD MI300X (verbs;ofi_rxm provider - RoCE)
     //
 
     // MI300X with 8x Broadcom bnxt_re (400Gbps) + 2x Mellanox ConnectX-6 Dx (100Gbps)
@@ -208,7 +216,7 @@ static TopologyInfo topologies[] = {
     {.enable = true,
      .instance_type = "mi300x",
      .topo_file = "mi300x-topo.xml",
-    //  .provider = "verbs;ofi_rxd",
+     .provider = "verbs;ofi_rxm",
      .numa_node_count = 2,
      .nic_count = 10, // 8 bnxt_re + 2 mlx5
      .nic_line_speed = 400, // dominant NIC speed (bnxt_re), mlx5 are 100Gbps
@@ -488,9 +496,7 @@ getNicDeviceNamesFromHwloc(NicMap &nic_map) {
 
     // get PCI device list, check if target device type, and build map
 
-    // It is bad approach to use instance_type for provider identification,
-    // but the PR goal is showcasing working topology.
-    bool use_verbs = (strcmp(curr_topology->instance_type, "mi300x") == 0);
+    bool use_verbs = (strcmp(curr_topology->provider, "verbs;ofi_rxm") == 0);
     hwloc_obj_t os_obj = nullptr;
     while ((os_obj = hwloc_get_next_osdev(hwloc_topology, os_obj)) != nullptr) {
         if (os_obj->attr->osdev.type == HWLOC_OBJ_OSDEV_OPENFABRICS) {
@@ -673,19 +679,9 @@ __wrap_fi_getinfo(uint32_t version,
             itr->domain_attr = malloc_zero<fi_domain_attr>();
             itr->fabric_attr = malloc_zero<fi_fabric_attr>();
 
-            // MI300X instance uses verbs;ofi_rxd provider, its domain names have a "-dgram" suffix
-            // It is bad approach to use instance_type for provider identification,
-            // but the PR goal is showcasing working topology.
-            if (strcmp(curr_topology->instance_type, "mi300x") == 0) {
-                std::string domain_name = entry.second.name + "-dgram";
-                itr->domain_attr->name = strdup(domain_name.c_str());
-                itr->fabric_attr->prov_name = strdup("verbs;ofi_rxd");
-                itr->fabric_attr->name = strdup("verbs;ofi_rxd");
-            } else {
-                itr->domain_attr->name = strdup(entry.second.name.c_str());
-                itr->fabric_attr->prov_name = strdup("efa");
-                itr->fabric_attr->name = strdup("efa");
-            }
+            itr->domain_attr->name = strdup(entry.second.name.c_str());
+            itr->fabric_attr->prov_name = strdup(curr_topology->provider);
+            itr->fabric_attr->name = strdup(curr_topology->provider);
 
             itr->ep_attr = malloc_zero<fi_ep_attr>();
             itr->ep_attr->type = FI_EP_RDM;
