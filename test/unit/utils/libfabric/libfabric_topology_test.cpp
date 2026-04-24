@@ -20,8 +20,6 @@
 #include "libfabric/libfabric_common.h"
 #include "libfabric/libfabric_rail_manager.h"
 #include "common/nixl_log.h"
-#include "absl/log/globals.h"
-#include "absl/log/initialize.h"
 
 #ifdef CUDA_FOUND
 #ifdef __HIP_PLATFORM_AMD__
@@ -301,16 +299,6 @@ testNumaDramRailSelectionPolicy(const char *instance_type);
 
 int
 main(int argc, char *argv[]) {
-    // NIXL_LOG_LEVEL=TRACE didn't work without this, not sure why - maybe some
-    // static initialization order issue with absl logging
-    // or resulting log file size (~20MB log file generated with NIXL_LOG_LEVEL=TRACE)
-    const char *log_level = getenv("NIXL_LOG_LEVEL");
-    if (log_level && std::string(log_level) == "TRACE") {
-        absl::SetVLogLevel("*", 2);
-        absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
-    }
-    absl::InitializeLog();
-
     if (argc > 1) {
         // testing for NUMA-aware rail selection for DRAM_SEG
         // the only parameter is the instance type
@@ -381,7 +369,7 @@ testBasicTopology() {
                     device_list += device;
                 }
                 NIXL_INFO << "   GPU " << gpu_id << " (PCI: " << pci_bus_id << ") mapped to "
-                          << gpu_devices.size() << " EFA devices: " << device_list;
+                          << gpu_devices.size() << " EFA/IB devices: " << device_list;
 #else
                 NIXL_INFO << "   Skipping GPU " << gpu_id << " (CUDA not available)";
 #endif
